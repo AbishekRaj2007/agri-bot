@@ -12,9 +12,12 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/hooks/useLanguage';
+import { useWeather } from '@/hooks/useWeather';
 
 export default function DashboardHome() {
   const { t } = useLanguage();
+  const { data: weatherData } = useWeather();
+
   const today = new Date().toLocaleDateString('en-IN', {
     weekday: 'long',
     year: 'numeric',
@@ -22,17 +25,23 @@ export default function DashboardHome() {
     day: 'numeric',
   });
 
+  const weatherValue = weatherData
+    ? `${weatherData.currentWeather.temperature}°C, ${weatherData.currentWeather.condition}`
+    : '28°C, Cloudy';
+  const weatherSub = weatherData?.currentWeather.location ?? 'Karnal, Haryana';
+  const floodRiskValue = weatherData?.floodRisk.level ?? 'Medium';
+
   const quickStats = [
     {
       icon: Cloud,
       label: t('todayWeather'),
-      value: '28°C, Cloudy',
-      sub: 'Karnal, Haryana',
+      value: weatherValue,
+      sub: weatherSub,
     },
     {
       icon: AlertTriangle,
       label: t('floodRisk'),
-      value: 'Medium',
+      value: floodRiskValue,
       badge: true,
     },
     {
