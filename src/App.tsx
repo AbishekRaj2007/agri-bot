@@ -12,6 +12,9 @@ import DashboardHome from "./pages/DashboardHome";
 import ChatPage from "./pages/ChatPage";
 import WeatherPage from "./pages/WeatherPage";
 import CropsPage from "./pages/CropsPage";
+import MarketPage from "./pages/MarketPage";
+import SchemesPage from "./pages/SchemesPage";
+import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -31,6 +34,9 @@ const App = () => (
               <Route path="chat" element={<ChatPage />} />
               <Route path="weather" element={<WeatherPage />} />
               <Route path="crops" element={<CropsPage />} />
+              <Route path="market" element={<MarketPage />} />
+              <Route path="schemes" element={<SchemesPage />} />
+              <Route path="settings" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
