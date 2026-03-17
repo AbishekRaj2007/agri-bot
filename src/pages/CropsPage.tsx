@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -41,9 +42,15 @@ import {
   getProgress,
   getDaysToHarvest,
 } from '@/hooks/useMyCrops';
-import { Search, Plus, Edit2, Trash2, CheckCircle2, Sprout, Calendar, Wheat } from 'lucide-react';
+import useBlockchain, { type CropEventRecord } from '@/hooks/useBlockchain';
+import {
+  Search, Plus, Edit2, Trash2, CheckCircle2, Sprout, Calendar, Wheat,
+  Wallet, ExternalLink, Loader2, Link2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+
+// window.ethereum is declared globally in useBlockchain.ts
 
 // ── Preset categories ──────────────────────────────────────────────────────
 const CROP_PRESETS = [
@@ -73,6 +80,9 @@ const addDays = (dateStr: string, days: number) => {
 const fmtDate = (dateStr: string) =>
   new Date(dateStr).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
+const fmtTimestamp = (ts: bigint) =>
+  new Date(Number(ts) * 1000).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+
 // ── Empty form factory ─────────────────────────────────────────────────────
 const makeForm = () => {
   const today = new Date().toISOString().slice(0, 10);
@@ -92,6 +102,9 @@ const makeForm = () => {
 // ── Crop categories for browse filter ─────────────────────────────────────
 const BROWSE_CATEGORIES = ['All', 'Rice', 'Wheat', 'Cotton', 'Vegetables'] as const;
 
+// Hardcoded farmer location — update after adding a location picker
+const FARMER_LOCATION = 'Tamil Nadu';
+
 // ══════════════════════════════════════════════════════════════════════════
 export default function CropsPage() {
   const { t } = useLanguage();
@@ -108,6 +121,26 @@ export default function CropsPage() {
   const [filter, setFilter] = useState<string>('All');
   const [selectedCrop, setSelectedCrop] = useState<Crop | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  // Blockchain state
+  const { account, isConnecting, connectWallet, logCropEvent, getCropHistory } = useBlockchain();
+  const [chainHistory, setChainHistory] = useState<CropEventRecord[]>([]);
+  const [chainLoading, setChainLoading] = useState(false);
+
+  // Fetch blockchain history whenever the connected account changes
+  useEffect(() => {
+    if (!account) {
+      setChainHistory([]);
+      return;
+    }
+    let cancelled = false;
+    setChainLoading(true);
+    getCropHistory(account)
+      .then(data  => { if (!cancelled) setChainHistory(data); })
+      .catch(()   => { if (!cancelled) setChainHistory([]); })
+      .finally(() => { if (!cancelled) setChainLoading(false); });
+    return () => { cancelled = true; };
+  }, [account, getCropHistory]);
 
   // ── Dialog helpers ───────────────────────────────────────────────────────
   const openAdd = () => {
@@ -213,9 +246,67 @@ export default function CropsPage() {
     toast.success('Crop removed.');
   };
 
-  const handleMarkHarvested = (id: string, name: string) => {
+  // Always completes local harvest first; blockchain log is best-effort
+  const handleMarkHarvested = async (id: string, cropName: string) => {
     markHarvested(id);
-    toast.success(`${name} marked as harvested!`);
+
+    if (!account) {
+      // No wallet connected — harvest locally and skip blockchain
+      toast.success(`${cropName} marked as harvested!`);
+      return;
+    }
+
+    try {
+      const hash = await logCropEvent(cropName, 'harvested', FARMER_LOCATION);
+      // Refresh on-chain history after successful log
+      getCropHistory(account).then(setChainHistory).catch(() => {});
+      toast.success(`${cropName} harvested!`, {
+        description: 'Crop event recorded on Sepolia blockchain.',
+        action: {
+          label: 'View on Etherscan',
+          onClick: () => window.open(`https://sepolia.etherscan.io/tx/${hash}`, '_blank'),
+        },
+      });
+    } catch {
+      // Local harvest already done above — just warn about blockchain failure
+      toast.warning(`${cropName} marked as harvested.`, {
+        description: 'Harvested locally — blockchain log failed. Check MetaMask and try again.',
+      });
+    }
+  };
+
+  // Log a planting event on-chain; auto-connects wallet if not yet connected
+  const handleLogPlanting = async (cropName: string) => {
+    if (!account) {
+      try {
+        await connectWallet();
+      } catch {
+        toast.error('Please connect your MetaMask wallet to log on blockchain.', {
+          description: 'Install MetaMask at metamask.io if you haven\'t already.',
+        });
+        return;
+      }
+    }
+
+    try {
+      const hash = await logCropEvent(cropName, 'planted', FARMER_LOCATION);
+      // Refresh on-chain history after successful log; account may have just been set
+      // so check again at call time
+      const currentAccount = account;
+      if (currentAccount) {
+        getCropHistory(currentAccount).then(setChainHistory).catch(() => {});
+      }
+      toast.success(`${cropName} — planting logged on blockchain!`, {
+        action: {
+          label: 'View on Etherscan',
+          onClick: () => window.open(`https://sepolia.etherscan.io/tx/${hash}`, '_blank'),
+        },
+      });
+    } catch {
+      toast.error(`Failed to log planting for ${cropName}.`, {
+        description: 'Check that MetaMask is connected to Sepolia.',
+      });
+    }
   };
 
   // ── Summary stats ────────────────────────────────────────────────────────
@@ -232,6 +323,13 @@ export default function CropsPage() {
     const matchFilter = filter === 'All' || c.category === filter;
     return matchSearch && matchFilter;
   });
+
+  // ── Wallet button label ──────────────────────────────────────────────────
+  const walletLabel = isConnecting
+    ? 'Connecting...'
+    : account
+    ? `${account.slice(0, 6)}...${account.slice(-4)}`
+    : 'Connect Wallet';
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -279,7 +377,7 @@ export default function CropsPage() {
           )}
 
           {/* Action row */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <div>
               {readyCrops.length > 0 && (
                 <Badge className="bg-amber-500 hover:bg-amber-600 text-white rounded-full gap-1">
@@ -288,10 +386,26 @@ export default function CropsPage() {
                 </Badge>
               )}
             </div>
-            <Button onClick={openAdd} className="gap-2">
-              <Plus className="w-4 h-4" />
-              {t('addCropBtn')}
-            </Button>
+            <div className="flex items-center gap-2">
+              {/* Wallet connect / address display */}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isConnecting || !!account}
+                onClick={() => !account && connectWallet()}
+                className={cn(
+                  'gap-2 text-xs font-medium',
+                  account && 'border-emerald-500 text-emerald-700 dark:text-emerald-400 cursor-default'
+                )}
+              >
+                <Wallet className="w-3.5 h-3.5" />
+                {walletLabel}
+              </Button>
+              <Button onClick={openAdd} className="gap-2">
+                <Plus className="w-4 h-4" />
+                {t('addCropBtn')}
+              </Button>
+            </div>
           </div>
 
           {/* Empty state */}
@@ -328,10 +442,113 @@ export default function CropsPage() {
                   onEdit={() => openEdit(crop)}
                   onDelete={() => setDeleteId(crop.id)}
                   onMarkHarvested={() => handleMarkHarvested(crop.id, crop.cropName)}
+                  onLogPlanting={() => handleLogPlanting(crop.cropName)}
                 />
               );
             })}
           </div>
+
+          {/* ── Blockchain History ─────────────────────────────────────── */}
+          {account && (
+            <Card className="border-primary/20 bg-primary/5 dark:bg-primary/10">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                  <Link2 className="w-4 h-4 text-primary" />
+                  Blockchain History
+                  <Badge variant="secondary" className="ml-auto text-xs font-normal rounded-full">
+                    Sepolia
+                  </Badge>
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  On-chain crop events for{' '}
+                  <span className="font-mono text-primary">
+                    {account.slice(0, 6)}...{account.slice(-4)}
+                  </span>
+                </p>
+              </CardHeader>
+
+              <CardContent>
+                {/* Loading */}
+                {chainLoading && (
+                  <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-sm">Fetching on-chain records...</span>
+                  </div>
+                )}
+
+                {/* Empty */}
+                {!chainLoading && chainHistory.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-8 text-center gap-2">
+                    <span className="text-2xl">⛓️</span>
+                    <p className="text-sm text-muted-foreground">No blockchain records yet.</p>
+                    <p className="text-xs text-muted-foreground/70">
+                      Use "Log Planting" or "Harvest" on your crops to record events on Sepolia.
+                    </p>
+                  </div>
+                )}
+
+                {/* Event rows */}
+                {!chainLoading && chainHistory.length > 0 && (
+                  <div className="space-y-2">
+                    {[...chainHistory].reverse().map((event, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-background/60 border border-border/50 text-sm"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <Badge
+                            variant={event.eventType === 'planted' ? 'secondary' : 'default'}
+                            className={cn(
+                              'text-xs shrink-0 rounded-full capitalize',
+                              event.eventType === 'harvested' && 'bg-emerald-600 hover:bg-emerald-600 text-white'
+                            )}
+                          >
+                            {event.eventType === 'planted' ? '🌱' : '🌾'} {event.eventType}
+                          </Badge>
+                          <span className="font-medium truncate">{event.cropName}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
+                          <span>{fmtTimestamp(event.timestamp)}</span>
+                          <a
+                            href={`https://sepolia.etherscan.io/address/${account}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="View wallet on Etherscan"
+                            className="hover:text-primary transition-colors"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Prompt to connect wallet if not connected and has crops */}
+          {!account && crops.length > 0 && (
+            <div className="flex items-center gap-3 p-4 rounded-xl border border-dashed border-primary/30 bg-primary/5 text-sm">
+              <Wallet className="w-5 h-5 text-primary shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium text-foreground">Log crop events on Sepolia blockchain</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Connect your MetaMask wallet to permanently record plantings and harvests on-chain.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={connectWallet}
+                disabled={isConnecting}
+                className="shrink-0 gap-1.5 text-xs"
+              >
+                <Wallet className="w-3 h-3" />
+                {isConnecting ? 'Connecting...' : 'Connect'}
+              </Button>
+            </div>
+          )}
         </TabsContent>
 
         {/* ══ BROWSE VARIETIES TAB ══════════════════════════════════════════ */}
@@ -548,7 +765,7 @@ function SummaryCard({ icon, label, value, bg }: {
 }
 
 function UserCropCard({
-  crop, status, progress, days, t, onEdit, onDelete, onMarkHarvested,
+  crop, status, progress, days, t, onEdit, onDelete, onMarkHarvested, onLogPlanting,
 }: {
   crop: UserCrop;
   status: UserCrop['status'];
@@ -558,6 +775,7 @@ function UserCropCard({
   onEdit: () => void;
   onDelete: () => void;
   onMarkHarvested: () => void;
+  onLogPlanting: () => void;
 }) {
   const statusLabels: Record<UserCrop['status'], string> = {
     planted:   t('planted'),
@@ -628,7 +846,7 @@ function UserCropCard({
           <p className="text-xs text-muted-foreground italic line-clamp-2">{crop.notes}</p>
         )}
 
-        {/* Actions */}
+        {/* Main actions */}
         <div className="mt-auto pt-3 flex gap-2">
           <Button size="sm" variant="outline" className="flex-1 gap-1 text-xs" onClick={onEdit}>
             <Edit2 className="w-3 h-3" />
@@ -653,6 +871,19 @@ function UserCropCard({
             <Trash2 className="w-3 h-3" />
           </Button>
         </div>
+
+        {/* Blockchain log planting — secondary action */}
+        {status !== 'harvested' && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="w-full gap-1.5 text-xs text-muted-foreground hover:text-primary border border-dashed border-border/50 hover:border-primary/50 transition-colors"
+            onClick={onLogPlanting}
+          >
+            <Link2 className="w-3 h-3" />
+            Log Planting on Blockchain
+          </Button>
+        )}
       </div>
     </div>
   );

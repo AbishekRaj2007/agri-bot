@@ -17,6 +17,18 @@ dist-ssr
 server/.env
 server/users.json
 
+# Blockchain — secrets and generated artifacts
+# ⚠️  NEVER commit PRIVATE_KEY or any .env file in the blockchain folder
+blockchain/**/.env
+blockchain/**/artifacts/
+blockchain/**/cache/
+blockchain/**/typechain-types/
+blockchain/**/ignition/deployments/
+# Hardhat v3 vars are stored in ~/.hardhat/vars.json (outside repo — always safe)
+
+# Root .env after blockchain deployment (contains VITE_CONTRACT_ADDRESS)
+# .env is already listed above — this comment is a reminder
+
 
 # Editor directories and files
 .vscode/*
