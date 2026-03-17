@@ -13,6 +13,8 @@ import {
   ChevronRight,
   Leaf,
   LogOut,
+  Store,
+  ShoppingBag,
 } from 'lucide-react';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
@@ -21,13 +23,15 @@ import { cn } from '@/lib/utils';
 import { useState } from 'react';
 
 const navItems = [
-  { key: 'dashboard' as const, icon: Home, path: '/dashboard' },
-  { key: 'chat' as const, icon: MessageCircle, path: '/dashboard/chat' },
-  { key: 'weather' as const, icon: Cloud, path: '/dashboard/weather' },
-  { key: 'crops' as const, icon: Sprout, path: '/dashboard/crops' },
-  { key: 'market' as const, icon: BarChart, path: '/dashboard/market' },
-  { key: 'schemes' as const, icon: FileText, path: '/dashboard/schemes' },
-  { key: 'settings' as const, icon: Settings, path: '/dashboard/settings' },
+  { key: 'dashboard' as const, icon: Home,          path: '/dashboard' },
+  { key: 'chat'      as const, icon: MessageCircle, path: '/dashboard/chat' },
+  { key: 'weather'   as const, icon: Cloud,         path: '/dashboard/weather' },
+  { key: 'crops'     as const, icon: Sprout,        path: '/dashboard/crops' },
+  { key: 'market'    as const, icon: BarChart,      path: '/dashboard/market' },
+  { key: 'schemes'   as const, icon: FileText,      path: '/dashboard/schemes' },
+  { key: 'warehouse' as const, icon: Store,       path: '/dashboard/warehouse' },
+  { key: 'buyers'    as const, icon: ShoppingBag, path: '/dashboard/buyers' },
+  { key: 'settings'  as const, icon: Settings,    path: '/dashboard/settings' },
 ];
 
 export default function DashboardSidebar() {

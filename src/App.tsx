@@ -18,6 +18,8 @@ import CropsPage from "./pages/CropsPage";
 import MarketPage from "./pages/MarketPage";
 import SchemesPage from "./pages/SchemesPage";
 import SettingsPage from "./pages/SettingsPage";
+import WarehousePage from "./pages/WarehousePage";
+import BuyersPage from "./pages/BuyersPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -66,6 +68,8 @@ const App = () => (
                 <Route path="crops" element={<CropsPage />} />
                 <Route path="market" element={<MarketPage />} />
                 <Route path="schemes" element={<SchemesPage />} />
+                <Route path="warehouse" element={<WarehousePage />} />
+                <Route path="buyers" element={<BuyersPage />} />
                 <Route path="settings" element={<SettingsPage />} />
               </Route>
 
