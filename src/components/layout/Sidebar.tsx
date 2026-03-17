@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home,
   MessageCircle,
@@ -12,10 +12,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Leaf,
+  LogOut,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 
@@ -32,8 +33,20 @@ const navItems = [
 export default function DashboardSidebar() {
   const { t, language, setLanguage } = useLanguage();
   const { isDark, toggleTheme } = useTheme();
+  const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/auth', { replace: true });
+  };
+
+  // Build avatar initials from the user's name
+  const initials = user?.fullName
+    ? user.fullName.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+    : '?';
 
   return (
     <aside
@@ -105,15 +118,28 @@ export default function DashboardSidebar() {
           {!collapsed && <span>Collapse</span>}
         </button>
 
+        {/* Logout */}
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm text-red-500 hover:bg-red-500/10 transition-colors"
+        >
+          <LogOut className="w-5 h-5 flex-shrink-0" />
+          {!collapsed && <span>Logout</span>}
+        </button>
+
         {/* User profile */}
-        <div className="flex items-center gap-3 px-3 py-2">
-          <div className="w-8 h-8 rounded-full bg-sidebar-primary flex items-center justify-center flex-shrink-0 text-sm font-bold text-sidebar-primary-foreground">
-            RK
+        <div className="flex items-center gap-3 px-3 py-2 border-t border-sidebar-border mt-1 pt-3">
+          <div className="w-8 h-8 rounded-full bg-sidebar-primary flex items-center justify-center flex-shrink-0 text-xs font-bold text-sidebar-primary-foreground">
+            {initials}
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <p className="text-sm font-medium text-sidebar-foreground truncate">Ramesh Kumar</p>
-              <p className="text-xs text-sidebar-foreground/60 truncate">Haryana</p>
+              <p className="text-sm font-medium text-sidebar-foreground truncate">
+                {user?.fullName || 'Farmer'}
+              </p>
+              <p className="text-xs text-sidebar-foreground/60 truncate">
+                {user?.state || user?.email || ''}
+              </p>
             </div>
           )}
         </div>
